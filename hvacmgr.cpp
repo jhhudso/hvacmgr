@@ -4,23 +4,22 @@
 //
 #include <iostream>
 #include <iomanip>
-#include <boost/asio.hpp>
 #include <cstdio>
 #include <sys/time.h>
 #include <vector>
 #include <unistd.h>
 #include "Frame.h"
+#include "HVAC.h"
 
 using namespace std;
 
 bool verbose = false;
 
-
 int main(int argc, char **argv) {
 	int opt;
-	auto pty = false;
-	auto baud_rate = 9600;
-	auto device = "/dev/ttyUSB0";
+	bool pty = false;
+	u_int32_t baud_rate = 9600;
+	string device = "/dev/ttyUSB0";
 
 	while ((opt = getopt(argc, argv, "pb:f:v")) != -1) {
 		switch (opt) {
@@ -45,52 +44,8 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	static boost::asio::io_service ios;
-	boost::asio::serial_port sp(ios, device);
-
-	if (!pty) {
-		sp.set_option(boost::asio::serial_port::baud_rate(baud_rate));
-		sp.set_option(
-				boost::asio::serial_port::flow_control(
-						boost::asio::serial_port::flow_control::none));
-		sp.set_option(
-				boost::asio::serial_port::parity(
-						boost::asio::serial_port::parity::none));
-		sp.set_option(
-				boost::asio::serial_port::stop_bits(
-						boost::asio::serial_port::stop_bits::one));
-		sp.set_option(
-				boost::asio::serial_port::character_size(
-						boost::asio::serial_port::character_size(8)));
-	}
-
-	Frame f;
-	u_int8_t tmp[64];
-	bool wait_for_beginning = true;
-
-	while (true) {
-		timeval diff, before, after;
-		memset(&tmp, 0, 64);
-		gettimeofday(&before, NULL);
-		size_t length = sp.read_some(boost::asio::buffer(tmp));
-		gettimeofday(&after, NULL);
-		diff.tv_sec = after.tv_sec - before.tv_sec;
-		diff.tv_usec = after.tv_usec - before.tv_usec;
-
-		if (wait_for_beginning) {
-			if (diff.tv_sec > 2) {
-				wait_for_beginning = false;
-				if (verbose) {
-					cout << "new frame" << endl;
-				}
-				f = Frame();
-			} else {
-				continue;
-			}
-		}
-		f.parseBuffer(tmp, length);
-	}
-	sp.close();
+	HVAC hvac(device, baud_rate, pty, 4);
+	hvac.listen();
 
 	return 0;
 }
