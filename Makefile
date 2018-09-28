@@ -1,6 +1,6 @@
 PROJECT_ROOT = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-OBJS = hvacmgr.o Frame.o
+OBJS = hvacmgr.o Frame.o HVAC.o
 
 ifeq ($(BUILD_MODE),run)
 	CPPFLAGS += -O2 -std=c++1z
