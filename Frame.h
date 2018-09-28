@@ -16,8 +16,11 @@ class Frame {
 public:
 	Frame();
 	virtual ~Frame();
-	bool parseBuffer(u_int8_t tmp[64], size_t length);
+	bool parseBuffer(u_int8_t input);
 	bool validChecksum();
+	u_int8_t getState();
+	u_int8_t getFunc(void);
+	void empty();
 private:
 	u_int16_t dst;
 	u_int16_t src;
@@ -32,6 +35,7 @@ private:
 	const static int maxframelen = 2 + 2 + 1 + 2 + 1 + 255 + 2;
 	u_int16_t buffer[maxframelen];
 	uint16_t ModRTU_CRC(u_int16_t ringBuffer[], u_int8_t length);
+	bool checksum_valid;
 };
 
 #endif /* FRAME_H_ */

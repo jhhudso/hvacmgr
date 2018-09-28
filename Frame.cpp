@@ -12,6 +12,8 @@
 
 using namespace std;
 
+extern bool verbose;
+
 Frame::~Frame() {
 	// TODO Auto-generated destructor stub
 }
@@ -37,7 +39,7 @@ uint16_t Frame::ModRTU_CRC(u_int16_t ringBuffer[], u_int8_t length) {
 
 Frame::Frame() :
 		dst(0), src(0), len(0), reserved(0), func(0), data(), checksum(0), framelen(
-				0), state(0) {
+				0), state(0), checksum_valid(false) {
 	memset(&buffer, 0, sizeof(buffer));
 }
 
@@ -45,9 +47,8 @@ bool Frame::validChecksum() {
 	return ModRTU_CRC(buffer, (2 + 2 + 1 + 2 + 1) + len) == checksum;
 }
 
-bool Frame::parseBuffer(u_int8_t tmp[64], size_t length) {
-	for (size_t i = 0; i < length; i++) {
-		buffer[framelen++] = tmp[i];
+bool Frame::parseBuffer(u_int8_t input) {
+		buffer[framelen++] = input;
 		assert(framelen < Frame::maxframelen);
 
 		switch (state) {
@@ -60,12 +61,12 @@ bool Frame::parseBuffer(u_int8_t tmp[64], size_t length) {
 			data = vector<u_int8_t>();
 			checksum = 0;
 
-			dst = tmp[i];
+			dst = input;
 			dst <<= 8;
 			state++;
 			break;
 		case 1: // destination byte 2
-			dst |= tmp[i];
+			dst |= input;
 			dst = ntohs(dst);
 			if (verbose) {
 				cout << "dst=" << dst;
@@ -73,12 +74,12 @@ bool Frame::parseBuffer(u_int8_t tmp[64], size_t length) {
 			state++;
 			break;
 		case 2: // source byte 1
-			src = tmp[i];
+			src = input;
 			src <<= 8;
 			state++;
 			break;
 		case 3: // source byte 2
-			src |= tmp[i];
+			src |= input;
 			src = ntohs(src);
 			if (verbose) {
 				cout << " src=" << src;
@@ -86,26 +87,26 @@ bool Frame::parseBuffer(u_int8_t tmp[64], size_t length) {
 			state++;
 			break;
 		case 4: // length
-			len = tmp[i];
+			len = input;
 			if (verbose) {
 				cout << " len=" << (unsigned) len;
 			}
 			state++;
 			break;
 		case 5: // reserved
-			reserved = tmp[i];
+			reserved = input;
 			reserved <<= 8;
 			state++;
 			break;
 		case 6: // reserved
-			reserved |= tmp[i];
+			reserved |= input;
 			if (verbose) {
 				cout << " reserved=" << (unsigned) reserved;
 			}
 			state++;
 			break;
 		case 7: // function
-			func = tmp[i];
+			func = input;
 			if (verbose) {
 				cout << " func=" << (unsigned) func;
 				switch (func) {
@@ -129,10 +130,10 @@ bool Frame::parseBuffer(u_int8_t tmp[64], size_t length) {
 			state++;
 			break;
 		case 8: // data
-			data.push_back(tmp[i]);
+			data.push_back(input);
 			if (verbose) {
 				cout << hex << setiosflags(ios::uppercase)
-						<< static_cast<unsigned>(tmp[i]) << dec << flush;
+						<< static_cast<unsigned>(input) << dec << flush;
 			}
 			if (data.size() == len) {
 				state++;
@@ -147,18 +148,19 @@ bool Frame::parseBuffer(u_int8_t tmp[64], size_t length) {
 			if (verbose) {
 				cout << " checksum=";
 			}
-			checksum = tmp[i];
+			checksum = input;
 			checksum <<= 8;
 			state++;
 			break;
 		case 10: // checksum
-			checksum |= tmp[i];
+			checksum |= input;
 			checksum = ntohs(checksum);
 			if (verbose) {
 				cout << hex << setiosflags(ios::uppercase)
 						<< static_cast<unsigned>(checksum) << dec << flush;
 			}
 			if (ModRTU_CRC(buffer, (2 + 2 + 1 + 2 + 1) + len) == checksum) {
+				checksum_valid = true;
 				if (verbose) {
 					cout << " (valid)";
 				}
@@ -169,15 +171,35 @@ bool Frame::parseBuffer(u_int8_t tmp[64], size_t length) {
 			}
 			state++;
 			break;
-		}
+		} // switch
 
 		if (state == 11) {
 			if (verbose) {
 				cout << endl;
 			}
-			state = 0;
-			framelen = 0;
+			return true; // frame complete
 		}
-	}
-	return false;
+	return false; // frame incomplete
 } // parseBuffer()
+
+u_int8_t Frame::getState() {
+	return state;
+}
+
+u_int8_t Frame::getFunc() {
+	return func;
+}
+
+
+void Frame::empty() {
+	dst = 0;
+	src = 0;
+	len = 0;
+	reserved = 0;
+	func = 0;
+	data = vector<u_int8_t>();
+	checksum = 0;
+
+	state = 0;
+	framelen = 0;
+}
