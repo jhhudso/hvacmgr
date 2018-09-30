@@ -80,3 +80,11 @@ bool HVAC::parseFrame(Frame f) {
 
 	return false;
 }
+
+float HVAC::getTemperatureF(u_int8_t highByte, u_int8_t lowByte) {
+  return makeWord(highByte, lowByte) / 16.0;
+}
+
+u_int16_t HVAC::makeWord(u_int8_t h, u_int8_t l) {
+  return (h << 8) | l;
+}
