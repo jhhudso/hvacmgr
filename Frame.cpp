@@ -128,6 +128,9 @@ bool Frame::parseBuffer(u_int8_t input) {
 				}
 			}
 			state++;
+			if (verbose) {
+			  cout << " data=";
+			}
 			break;
 		case 8: // data
 			data.push_back(input);
@@ -137,11 +140,6 @@ bool Frame::parseBuffer(u_int8_t input) {
 			}
 			if (data.size() == len) {
 				state++;
-			}
-			if (data.size() == 1) {
-				if (verbose) {
-					cout << " data=";
-				}
 			}
 			break;
 		case 9: // checksum
