@@ -1,17 +1,52 @@
-/*
- * HVAC.cpp
- *
- *  Created on: Sep 26, 2018
- *      Author: jhhudso
- */
+// Copyright (c) 2018 Jared H. Hudson
+// Copyright (c) 2016 Jared Gaillard https://github.com/jwarcd/CZII_to_MQTT
+// Licensed under the MIT License
+//
 
+#include <ctime>
+#include <boost/log/trivial.hpp>
 #include "HVAC.h"
 
 using namespace std;
 
-HVAC::HVAC(string device, u_int32_t baud_rate, bool pty, u_int8_t zones) :
-		ios(), sp(ios, device), f(), device(), maxzones(zones), wait_for_beginning(
+const char* dayStr(uint8_t day) {
+	switch (day) {
+	case 1:
+		return "Sunday";
+		break;
+	case 2:
+		return "Monday";
+		break;
+	case 3:
+		return "Tuesday";
+		break;
+	case 4:
+		return "Wednesday";
+		break;
+	case 5:
+		return "Thursday";
+		break;
+	case 6:
+		return "Friday";
+		break;
+	case 7:
+		return "Saturday";
+		break;
+	default:
+		return "Unknown";
+		break;
+	}
+}
+
+HVAC::HVAC(string device, u_int32_t baud_rate, bool pty, u_int8_t numberZones) :
+		NUMBER_ZONES(numberZones), statusModified(false), ios(), sp(ios), f(), device(), wait_for_beginning(
 				true) {
+	try {
+		sp.open(device);
+	} catch (...) {
+		cerr << "Error occurred opening " << device << endl;
+		exit(1);
+	}
 	if (!pty) {
 		sp.set_option(boost::asio::serial_port::baud_rate(baud_rate));
 		sp.set_option(
@@ -26,6 +61,10 @@ HVAC::HVAC(string device, u_int32_t baud_rate, bool pty, u_int8_t zones) :
 		sp.set_option(
 				boost::asio::serial_port::character_size(
 						boost::asio::serial_port::character_size(8)));
+	}
+
+	for (size_t i = 0; i < NUMBER_ZONES; i++) {
+		zones[i] = new Zone(i + 1);
 	}
 
 }
@@ -50,7 +89,32 @@ void HVAC::listen(void) {
 		}
 		for (size_t i = 0; i < length; i++) {
 			if (f.parseBuffer(tmp[i]) == true) {
-				parseFrame(f);
+				update(f);
+				if (isZoneModified()) {
+					clearZoneModified();
+
+					string output = toZoneJson();
+					if (verbose) {
+						cout << "hvac_mqtt_feed.publish: " << output.c_str()
+								<< endl;
+					}
+					//if (!hvac_mqtt_feed.publish(output.c_str())) {     // Publish to MQTT server (openhab)
+					//  cerr << "zone_mqtt_feed.publish Failed" << endl;
+					//}
+				}
+
+				if (isStatusModified()) {
+					clearStatusModified();
+
+					string output = toStatusJson();
+					if (verbose) {
+						cout << "status_hvac_feed.publish: " << output.c_str()
+								<< endl;
+					}
+					//if (!status_hvac_feed.publish(output.c_str())) {     // Publish to MQTT server (openhab)
+					//  cerr << "status_mqtt_feed.publish Failed" << endl;
+					//}
+				}
 				f.empty();
 			}
 		}
@@ -58,33 +122,316 @@ void HVAC::listen(void) {
 }
 
 HVAC::~HVAC() {
-	// TODO Auto-generated destructor stub
 	sp.close();
 }
 
-bool HVAC::parseFrame(Frame f) {
-	u_int8_t func = f.getFunc();
-
-	switch (func) {
-	case 0x6:
-		break;
-	case 0xB:
-		break;
-	case 0xC:
-		break;
-	case 0x15:
-		break;
-	default:
-		break;
-	}
-
-	return false;
-}
-
-float HVAC::getTemperatureF(u_int8_t highByte, u_int8_t lowByte) {
-  return makeWord(highByte, lowByte) / 16.0;
+float HVAC::getTemperatureF(u_int8_t highu_int8_t, u_int8_t lowu_int8_t) {
+	return makeWord(highu_int8_t, lowu_int8_t) / 16.0;
 }
 
 u_int16_t HVAC::makeWord(u_int8_t h, u_int8_t l) {
-  return (h << 8) | l;
+	return (h << 8) | l;
 }
+
+bool HVAC::isStatusModified() {
+	return statusModified;
+}
+
+void HVAC::clearStatusModified() {
+	statusModified = false;
+}
+
+bool HVAC::isZoneModified() {
+	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
+		if (zones[i]->isModified()) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void HVAC::clearZoneModified() {
+	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
+		zones[i]->setModified(false);
+	}
+}
+
+Zone* HVAC::getZone(u_int8_t zoneIndex) {
+	return zones[zoneIndex];
+}
+
+void HVAC::setControllerState(u_int8_t value) {
+	if (controllerState != value)
+		statusModified = true;
+
+	controllerState = value;
+}
+
+void HVAC::setLatTemperature(u_int8_t value) {
+	if (!isValidTemperature(value))
+		return;
+
+	if (lat_Temp_f != value)
+		statusModified = true;
+
+	lat_Temp_f = value;
+}
+
+void HVAC::setOutsideTemperature(float value) {
+	if (!isValidTemperature(value))
+		return;
+
+	if (outside_Temp_f != value)
+		statusModified = true;
+
+	outside_Temp_f = value;
+}
+
+void HVAC::setOutsideTemperature2(float value) {
+	if (!isValidTemperature(value))
+		return;
+
+	if (outside_Temp2_f != value)
+		statusModified = true;
+
+	outside_Temp2_f = value;
+}
+
+bool HVAC::isValidTemperature(float value) {
+	return value < 200.0 && value > -50.0;
+}
+
+void HVAC::setDayTime(u_int8_t day, u_int8_t hour, u_int8_t minute,
+		u_int8_t second) {
+	if (day != time.Wday || hour != time.Hour || minute != time.Minute
+			|| second != time.Second) {
+		statusModified = true;
+	}
+
+	time.Wday = day;
+	cerr << "time.Wday=" << day << endl;
+	time.Hour = hour;
+	time.Minute = minute;
+	time.Second = second;
+}
+
+//
+//	Update cached data
+//
+bool HVAC::update(Frame &f) {
+	vector<u_int8_t> data = f.getData();
+	u_int8_t table = 0, row = 0;
+	u_int8_t dataLength = data.size();
+
+	if (dataLength >= 3) {
+		table = data.at(1);
+		row = data.at(2);
+	}
+
+	u_int8_t function = f.getFunc();
+
+	if (function == RESPONSE_FUNCTION) {
+		switch (table) {
+		case 1:
+			if (row == 6 && dataLength == 16) {
+				updateZone1Info(data);
+			} else if (row == 16 && dataLength == 19) {
+				updateZoneSetpoints(data);
+			} else if (row == 18 && dataLength == 7) {
+				updateTime(data);
+			}
+			break;
+		case 2:
+			if (row == 3 && dataLength == 13) {
+				updateZoneInfo(data);
+			}
+			break;
+		case 9:
+			if (row == 3 && dataLength == 10) {
+				updateOutsideTemp(data);
+			} else if (row == 5 && dataLength == 4) {
+				updateControllerState(data);
+			}
+			break;
+		default:
+			break;
+		}
+	} else if (function == WRITE_FUNCTION) {
+		switch (table) {
+		case 2:
+			if (row == 1 && dataLength == 13) {
+				updateOutsideHumidityTemp(data);
+			}
+			break;
+		case 9:
+			if (row == 4 && dataLength == 11) {
+				updateDamperPositions(data);
+			} else if (row == 5 && dataLength == 4) {
+				updateControllerState(data);
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	return true;
+}
+
+//
+//   FRAME: 9.0  1.0  11  0.0.12  0.9.4.15.15.0.0.0.0.0.0.                 136.181
+//
+void HVAC::updateDamperPositions(RingBuffer& ringBuffer) {
+	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
+		zones[i]->setDamperPosition(ringBuffer.at(3 + i));
+	}
+}
+
+//
+//  FRAME: 8.0  1.0  16  0.0.6   0.1.6.0.0.4.64.60.0.0.0.0.0.0.17.50.      74.114
+//
+void HVAC::updateZone1Info(RingBuffer& ringBuffer) {
+	zones[0]->setTemperature(
+			getTemperatureF(ringBuffer.at(5), ringBuffer.at(6)));
+	zones[0]->setHumidity(ringBuffer.at(7));
+}
+
+//
+//  FRAME: 99.0  1.0  19  0.0.6   0.1.16. 78.77.76.76.76.76.76.76. 68.67.68.68.68.68.68.68.        177.133
+//                                        [     cooling          ] [        heating       ]
+//
+void HVAC::updateZoneSetpoints(RingBuffer& ringBuffer) {
+	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
+		zones[i]->setCoolSetpoint(ringBuffer.at(3 + i));
+		zones[i]->setHeatSetpoint(ringBuffer.at(11 + i));
+	}
+}
+
+//
+//  FRAME: 8.0  1.0  7   0.0.6   0.1.18.3.22.33.47
+//
+//
+void HVAC::updateTime(RingBuffer& ringBuffer) {
+	u_int8_t day = ringBuffer.at(3);
+	u_int8_t hour = ringBuffer.at(4);
+	u_int8_t minute = ringBuffer.at(5);
+	u_int8_t second = ringBuffer.at(6);
+
+	day++;
+	setDayTime(day, hour, minute, second);
+}
+
+//
+//  FRAME: 1.0  9.0  10  0.0.6   0.9.3.195.3.136.72.255.0.0.
+//
+void HVAC::updateOutsideTemp(RingBuffer& ringBuffer) {
+	setOutsideTemperature(getTemperatureF(ringBuffer.at(4), ringBuffer.at(5)));
+	setLatTemperature(ringBuffer.at(6));
+}
+
+//
+//  FRAME: 9.0  1.0  4   0.0.12  0.9.5.128.
+//
+void HVAC::updateControllerState(RingBuffer& ringBuffer) {
+	setControllerState(ringBuffer.at(3));
+}
+
+//
+//  FRAME: 2.0  1.0  13  0.0.12  0.2.1.0.57.3.145.3.0.0.0.2.0.
+//
+void HVAC::updateOutsideHumidityTemp(RingBuffer& ringBuffer) {
+	setOutsideTemperature2(getTemperatureF(ringBuffer.at(5), ringBuffer.at(6)));
+	zones[0]->setHumidity(ringBuffer.at(4));
+}
+
+//
+//  FRAME: 1.0  2.0  13  0.0.6   0.2.3.1.0.0.0.4.160.74.67.77.0.
+//  FRAME: 1.0  2.0  13  0.0.6   0.2.3.0.0.0.0.4.122.71.66.78.0.
+//
+void HVAC::updateZoneInfo(RingBuffer& ringBuffer) {
+	u_int8_t zoneIndex = ringBuffer.at(2) - 1;
+	if (zoneIndex == 0 || zoneIndex >= NUMBER_ZONES)
+		return;
+
+	zones[zoneIndex]->setTemperature(
+			getTemperatureF(ringBuffer.at(7), ringBuffer.at(8)));
+	zones[zoneIndex]->setHeatSetpoint(ringBuffer.at(10));
+	zones[zoneIndex]->setCoolSetpoint(ringBuffer.at(11));
+}
+
+//
+//   To Zone JSON string
+//
+string HVAC::toZoneJson() {
+	boost::property_tree::ptree root;
+	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
+		boost::property_tree::ptree child;
+
+		child.put("cool", zones[i]->getCoolSetpoint());
+		child.put("heat", zones[i]->getHeatSetpoint());
+		child.put("temp", zones[i]->getTemperature());
+		child.put("hum", zones[i]->getHumidity());
+		child.put("damp", zones[i]->getDamperPosition());
+		root.add_child("z" + to_string(i + 1), child);
+	}
+
+	ostringstream output;
+	boost::property_tree::write_json(output, root);
+	return output.str();
+}
+
+//
+//   To Status JSON string
+//
+string HVAC::toStatusJson() {
+	boost::property_tree::ptree root;
+
+	char timestring[10];
+	sprintf(timestring, "%02d:%02d:%02d", time.Hour, time.Minute, time.Second);
+	root.put("time", timestring);
+
+	root.put("day", dayStr(time.Wday));
+
+	root.put("lat", lat_Temp_f);
+	root.put("out", outside_Temp_f);
+	root.put("out2", outside_Temp2_f);
+
+	if (controllerState != (u_int8_t) -1) {
+		boost::property_tree::ptree state;
+
+		state.put("dehum", (int) (bool) (controllerState & DeHumidify));
+		state.put("hum", (int) (bool) (controllerState & Humidify));
+		state.put("fan", (int) (bool) (controllerState & Fan_G));
+		state.put("rev", (int) (bool) (controllerState & ReversingValve));
+		state.put("aux2", (int) (bool) (controllerState & AuxHeat2_W2));
+		state.put("aux1", (int) (bool) (controllerState & AuxHeat1_W1));
+		state.put("comp2",
+				(int) (bool) (controllerState & CompressorStage2_Y2));
+		state.put("comp1",
+				(int) (bool) (controllerState & CompressorStage1_Y1));
+		root.add_child("state", state);
+	}
+
+	ostringstream output;
+	boost::property_tree::write_json(output, root);
+	return output.str();
+}
+
+//
+//   Add to json if value is not the default value
+//
+void HVAC::addJson(boost::property_tree::ptree& obj, string key,
+		u_int8_t value) {
+	if (value == (u_int8_t) -1)
+		return;
+	obj.put(key, value);
+}
+
+//
+//    Add to json if value is not the default value
+//
+void HVAC::addJson(boost::property_tree::ptree& obj, string key, float value) {
+	if (value > FLOAT_MIN_VALUE) {
+		obj.put(key, value);
+	}
+}
+
