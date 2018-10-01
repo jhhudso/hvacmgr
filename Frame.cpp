@@ -1,9 +1,7 @@
-/*
- * Frame.cpp
- *
- *  Created on: Sep 25, 2018
- *      Author: Jared H. Hudson
- */
+// Copyright (c) 2018 Jared H. Hudson
+// Copyright (c) 2016 Jared Gaillard https://github.com/jwarcd/CZII_to_MQTT
+// Licensed under the MIT License
+//
 #include <iostream>
 #include <arpa/inet.h>
 #include <string.h>
@@ -186,6 +184,10 @@ u_int8_t Frame::getState() {
 
 u_int8_t Frame::getFunc() {
 	return func;
+}
+
+vector<u_int8_t> Frame::getData() {
+	return data;
 }
 
 

@@ -1,10 +1,7 @@
-/*
- * Frame.h
- *
- *  Created on: Sep 25, 2018
- *      Author: Jared H. Hudson
- */
-
+// Copyright (c) 2018 Jared H. Hudson
+// Copyright (c) 2016 Jared Gaillard https://github.com/jwarcd/CZII_to_MQTT
+// Licensed under the MIT License
+//
 #ifndef FRAME_H_
 #define FRAME_H_
 #include <vector>
@@ -21,6 +18,8 @@ public:
 	u_int8_t getState();
 	u_int8_t getFunc(void);
 	void empty();
+	std::vector<u_int8_t> getData();
+	const static int maxframelen = 2 + 2 + 1 + 2 + 1 + 255 + 2;
 private:
 	u_int16_t dst;
 	u_int16_t src;
@@ -32,7 +31,6 @@ private:
 
 	size_t framelen;
 	int state;
-	const static int maxframelen = 2 + 2 + 1 + 2 + 1 + 255 + 2;
 	u_int16_t buffer[maxframelen];
 	uint16_t ModRTU_CRC(u_int16_t ringBuffer[], u_int8_t length);
 	bool checksum_valid;
