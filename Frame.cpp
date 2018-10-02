@@ -37,7 +37,7 @@ uint16_t Frame::ModRTU_CRC(u_int16_t ringBuffer[], u_int8_t length) {
 
 Frame::Frame() :
 		dst(0), src(0), len(0), reserved(0), func(0), data(), checksum(0), framelen(
-				0), state(0), checksum_valid(false) {
+				0), state(0), checksum_valid(false), errors(0) {
 	memset(&buffer, 0, sizeof(buffer));
 }
 
@@ -47,7 +47,10 @@ bool Frame::validChecksum() {
 
 bool Frame::parseBuffer(u_int8_t input) {
 		buffer[framelen++] = input;
-		assert(framelen < Frame::maxframelen);
+		if (framelen > Frame::maxframelen) {
+			errors++;
+			return false;
+		}
 
 		switch (state) {
 		case 0: // destination byte 1
@@ -190,7 +193,9 @@ vector<u_int8_t> Frame::getData() {
 	return data;
 }
 
-
+const size_t Frame::getErrors() {
+	return errors;
+}
 void Frame::empty() {
 	dst = 0;
 	src = 0;
