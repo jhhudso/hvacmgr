@@ -39,8 +39,7 @@ const char* dayStr(uint8_t day) {
 }
 
 HVAC::HVAC(string device, u_int32_t baud_rate, bool pty, u_int8_t numberZones) :
-		NUMBER_ZONES(numberZones), statusModified(false), ios(), sp(ios), f(), device(), wait_for_beginning(
-				true) {
+		NUMBER_ZONES(numberZones), statusModified(false), ios(), sp(ios), f(), device(), wait_for_beginning(true) {
 	try {
 		sp.open(device);
 	} catch (...) {
@@ -49,24 +48,16 @@ HVAC::HVAC(string device, u_int32_t baud_rate, bool pty, u_int8_t numberZones) :
 	}
 	if (!pty) {
 		sp.set_option(boost::asio::serial_port::baud_rate(baud_rate));
-		sp.set_option(
-				boost::asio::serial_port::flow_control(
-						boost::asio::serial_port::flow_control::none));
-		sp.set_option(
-				boost::asio::serial_port::parity(
-						boost::asio::serial_port::parity::none));
-		sp.set_option(
-				boost::asio::serial_port::stop_bits(
-						boost::asio::serial_port::stop_bits::one));
-		sp.set_option(
-				boost::asio::serial_port::character_size(
-						boost::asio::serial_port::character_size(8)));
+		sp.set_option(boost::asio::serial_port::flow_control(boost::asio::serial_port::flow_control::none));
+		sp.set_option(boost::asio::serial_port::parity(boost::asio::serial_port::parity::none));
+		sp.set_option(boost::asio::serial_port::stop_bits(boost::asio::serial_port::stop_bits::one));
+		sp.set_option(boost::asio::serial_port::character_size(boost::asio::serial_port::character_size(8)));
 	}
 
 	for (size_t i = 0; i < NUMBER_ZONES; i++) {
 		zones[i] = new Zone(i + 1);
 	}
-
+	memset(&time, 0, sizeof(time));
 }
 
 void HVAC::listen(void) {
@@ -95,8 +86,7 @@ void HVAC::listen(void) {
 
 					string output = toZoneJson();
 					if (verbose) {
-						cout << "hvac_mqtt_feed.publish: " << output.c_str()
-								<< endl;
+						cout << "hvac_mqtt_feed.publish: " << output.c_str() << endl;
 					}
 					//if (!hvac_mqtt_feed.publish(output.c_str())) {     // Publish to MQTT server (openhab)
 					//  cerr << "zone_mqtt_feed.publish Failed" << endl;
@@ -108,14 +98,19 @@ void HVAC::listen(void) {
 
 					string output = toStatusJson();
 					if (verbose) {
-						cout << "status_hvac_feed.publish: " << output.c_str()
-								<< endl;
+						cout << "status_hvac_feed.publish: " << output.c_str() << endl;
 					}
 					//if (!status_hvac_feed.publish(output.c_str())) {     // Publish to MQTT server (openhab)
 					//  cerr << "status_mqtt_feed.publish Failed" << endl;
 					//}
 				}
 				f.empty();
+			}
+			{
+				if (f.getErrors() > 2) {
+					wait_for_beginning = true;
+					cerr << "3 errors received, waiting for next pause in transmission." << endl;
+				}
 			}
 		}
 	}
@@ -201,10 +196,8 @@ bool HVAC::isValidTemperature(float value) {
 	return value < 200.0 && value > -50.0;
 }
 
-void HVAC::setDayTime(u_int8_t day, u_int8_t hour, u_int8_t minute,
-		u_int8_t second) {
-	if (day != time.Wday || hour != time.Hour || minute != time.Minute
-			|| second != time.Second) {
+void HVAC::setDayTime(u_int8_t day, u_int8_t hour, u_int8_t minute, u_int8_t second) {
+	if (day != time.Wday || hour != time.Hour || minute != time.Minute || second != time.Second) {
 		statusModified = true;
 	}
 
@@ -221,36 +214,79 @@ void HVAC::setDayTime(u_int8_t day, u_int8_t hour, u_int8_t minute,
 bool HVAC::update(Frame &f) {
 	vector<u_int8_t> data = f.getData();
 	u_int8_t table = 0, row = 0;
-	u_int8_t dataLength = data.size();
+	const u_int8_t dataLength = data.size();
 
 	if (dataLength >= 3) {
 		table = data.at(1);
 		row = data.at(2);
 	}
 
-	u_int8_t function = f.getFunc();
+	const u_int8_t function = f.getFunc();
 
 	if (function == RESPONSE_FUNCTION) {
 		switch (table) {
 		case 1:
-			if (row == 6 && dataLength == 16) {
-				updateZone1Info(data);
-			} else if (row == 16 && dataLength == 19) {
-				updateZoneSetpoints(data);
-			} else if (row == 18 && dataLength == 7) {
-				updateTime(data);
+			switch (row) {
+			case 6:
+				if (dataLength == 16) {
+					updateZone1Info(data);
+				} else {
+					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 16" << endl;
+				}
+				break;
+			case 16:
+				if (dataLength == 19) {
+					updateZoneSetpoints(data);
+				} else {
+					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 19" << endl;
+				}
+
+				break;
+			case 18:
+				if (dataLength == 7) {
+					updateTime(data);
+				} else {
+					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 7" << endl;
+				}
+				break;
+			default:
+				cerr << "error: RES unrecognized table " << hex << (unsigned)table << " row " << hex << (unsigned)row << endl;
 			}
+
 			break;
 		case 2:
-			if (row == 3 && dataLength == 13) {
-				updateZoneInfo(data);
+			switch (row) {
+			case 3:
+				if (dataLength == 13) {
+					updateZoneInfo(data);
+				} else {
+					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 13" << endl;
+				}
+				break;
+			default:
+				cerr << "error: RES unrecognized table " << hex << (unsigned)table << " row " << hex << (unsigned)row << endl;
+				break;
 			}
 			break;
 		case 9:
-			if (row == 3 && dataLength == 10) {
-				updateOutsideTemp(data);
-			} else if (row == 5 && dataLength == 4) {
-				updateControllerState(data);
+			switch(row) {
+			case 3:
+				if (dataLength == 10) {
+					updateOutsideTemp(data);
+				} else {
+					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 10" << endl;
+				}
+				break;
+			case 5:
+				if (dataLength == 4) {
+					updateControllerState(data);
+				} else {
+					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 4" << endl;
+				}
+				break;
+			default:
+				cerr << "error: RES unrecognized table " << hex << (unsigned)table << " row " << hex << (unsigned)row << endl;
+				break;
 			}
 			break;
 		default:
@@ -290,8 +326,7 @@ void HVAC::updateDamperPositions(RingBuffer& ringBuffer) {
 //  FRAME: 8.0  1.0  16  0.0.6   0.1.6.0.0.4.64.60.0.0.0.0.0.0.17.50.      74.114
 //
 void HVAC::updateZone1Info(RingBuffer& ringBuffer) {
-	zones[0]->setTemperature(
-			getTemperatureF(ringBuffer.at(5), ringBuffer.at(6)));
+	zones[0]->setTemperature(getTemperatureF(ringBuffer.at(5), ringBuffer.at(6)));
 	zones[0]->setHumidity(ringBuffer.at(7));
 }
 
@@ -352,8 +387,7 @@ void HVAC::updateZoneInfo(RingBuffer& ringBuffer) {
 	if (zoneIndex == 0 || zoneIndex >= NUMBER_ZONES)
 		return;
 
-	zones[zoneIndex]->setTemperature(
-			getTemperatureF(ringBuffer.at(7), ringBuffer.at(8)));
+	zones[zoneIndex]->setTemperature(getTemperatureF(ringBuffer.at(7), ringBuffer.at(8)));
 	zones[zoneIndex]->setHeatSetpoint(ringBuffer.at(10));
 	zones[zoneIndex]->setCoolSetpoint(ringBuffer.at(11));
 }
@@ -404,10 +438,8 @@ string HVAC::toStatusJson() {
 		state.put("rev", (int) (bool) (controllerState & ReversingValve));
 		state.put("aux2", (int) (bool) (controllerState & AuxHeat2_W2));
 		state.put("aux1", (int) (bool) (controllerState & AuxHeat1_W1));
-		state.put("comp2",
-				(int) (bool) (controllerState & CompressorStage2_Y2));
-		state.put("comp1",
-				(int) (bool) (controllerState & CompressorStage1_Y1));
+		state.put("comp2", (int) (bool) (controllerState & CompressorStage2_Y2));
+		state.put("comp1", (int) (bool) (controllerState & CompressorStage1_Y1));
 		root.add_child("state", state);
 	}
 
@@ -419,8 +451,7 @@ string HVAC::toStatusJson() {
 //
 //   Add to json if value is not the default value
 //
-void HVAC::addJson(boost::property_tree::ptree& obj, string key,
-		u_int8_t value) {
+void HVAC::addJson(boost::property_tree::ptree& obj, string key, u_int8_t value) {
 	if (value == (u_int8_t) -1)
 		return;
 	obj.put(key, value);
