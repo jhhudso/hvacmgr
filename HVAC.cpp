@@ -231,14 +231,14 @@ bool HVAC::update(Frame &f) {
 				if (dataLength == 16) {
 					updateZone1Info(data);
 				} else {
-					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 16" << endl;
+					cerr << "error: RES" << hex << (unsigned) table << "," << hex << (unsigned) row << " datalen != 16" << endl;
 				}
 				break;
 			case 16:
 				if (dataLength == 19) {
 					updateZoneSetpoints(data);
 				} else {
-					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 19" << endl;
+					cerr << "error: RES" << hex << (unsigned) table << "," << hex << (unsigned) row << " datalen != 19" << endl;
 				}
 
 				break;
@@ -246,11 +246,11 @@ bool HVAC::update(Frame &f) {
 				if (dataLength == 7) {
 					updateTime(data);
 				} else {
-					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 7" << endl;
+					cerr << "error: RES" << hex << (unsigned) table << "," << hex << (unsigned) row << " datalen != 7" << endl;
 				}
 				break;
 			default:
-				cerr << "error: RES unrecognized table " << hex << (unsigned)table << " row " << hex << (unsigned)row << endl;
+				cerr << "error: RES unrecognized table " << hex << (unsigned) table << " row " << hex << (unsigned) row << endl;
 			}
 
 			break;
@@ -258,34 +258,34 @@ bool HVAC::update(Frame &f) {
 			switch (row) {
 			case 3:
 				if (dataLength == 13) {
-					updateZoneInfo(data);
+					updateZoneInfo(f.getSrc(), data);
 				} else {
-					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 13" << endl;
+					cerr << "error: RES" << hex << (unsigned) table << "," << hex << (unsigned) row << " datalen != 13" << endl;
 				}
 				break;
 			default:
-				cerr << "error: RES unrecognized table " << hex << (unsigned)table << " row " << hex << (unsigned)row << endl;
+				cerr << "error: RES unrecognized table " << hex << (unsigned) table << " row " << hex << (unsigned) row << endl;
 				break;
 			}
 			break;
 		case 9:
-			switch(row) {
+			switch (row) {
 			case 3:
 				if (dataLength == 10) {
 					updateOutsideTemp(data);
 				} else {
-					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 10" << endl;
+					cerr << "error: RES" << hex << (unsigned) table << "," << hex << (unsigned) row << " datalen != 10" << endl;
 				}
 				break;
 			case 5:
 				if (dataLength == 4) {
 					updateControllerState(data);
 				} else {
-					cerr << "error: RES" << hex << (unsigned)table << "," << hex << (unsigned)row << " datalen != 4" << endl;
+					cerr << "error: RES" << hex << (unsigned) table << "," << hex << (unsigned) row << " datalen != 4" << endl;
 				}
 				break;
 			default:
-				cerr << "error: RES unrecognized table " << hex << (unsigned)table << " row " << hex << (unsigned)row << endl;
+				cerr << "error: RES unrecognized table " << hex << (unsigned) table << " row " << hex << (unsigned) row << endl;
 				break;
 			}
 			break;
@@ -382,14 +382,19 @@ void HVAC::updateOutsideHumidityTemp(RingBuffer& ringBuffer) {
 //  FRAME: 1.0  2.0  13  0.0.6   0.2.3.1.0.0.0.4.160.74.67.77.0.
 //  FRAME: 1.0  2.0  13  0.0.6   0.2.3.0.0.0.0.4.122.71.66.78.0.
 //
-void HVAC::updateZoneInfo(RingBuffer& ringBuffer) {
-	u_int8_t zoneIndex = ringBuffer.at(2) - 1;
-	if (zoneIndex == 0 || zoneIndex >= NUMBER_ZONES)
-		return;
+void HVAC::updateZoneInfo(u_int8_t zoneIndex, RingBuffer& ringBuffer) {
+	if (verbose) {
+		cerr << "updateZoneInfo(" << dec << (unsigned)zoneIndex << ")" << endl;
+	}
 
-	zones[zoneIndex]->setTemperature(getTemperatureF(ringBuffer.at(7), ringBuffer.at(8)));
-	zones[zoneIndex]->setHeatSetpoint(ringBuffer.at(10));
-	zones[zoneIndex]->setCoolSetpoint(ringBuffer.at(11));
+	if (zoneIndex == 0 || zoneIndex >= NUMBER_ZONES) {
+		cerr << "error in updateZoneInfo(), zoneIndex(" << dec << (unsigned)zoneIndex << ") == 0 or >= " << dec << (unsigned)NUMBER_ZONES << endl;
+		return;
+	}
+
+	zones[zoneIndex-1]->setTemperature(getTemperatureF(ringBuffer.at(7), ringBuffer.at(8)));
+	zones[zoneIndex-1]->setHeatSetpoint(ringBuffer.at(10));
+	zones[zoneIndex-1]->setCoolSetpoint(ringBuffer.at(11));
 }
 
 //

@@ -68,7 +68,7 @@ public:
 
 	bool isValidTemperature(float value);
     float getTemperatureF(byte highByte, byte lowByte);
-    void updateZoneInfo(RingBuffer& ringBuffer);
+    void updateZoneInfo(u_int8_t zone, RingBuffer& ringBuffer);
     void updateOutsideHumidityTemp(RingBuffer& ringBuffer);
     void updateOutsideTemp(RingBuffer& ringBuffer);
     void updateControllerState(RingBuffer& ringBuffer);
