@@ -181,6 +181,10 @@ bool Frame::parseBuffer(u_int8_t input) {
 	return false; // frame incomplete
 } // parseBuffer()
 
+u_int8_t Frame::getSrc() {
+	return src;
+}
+
 u_int8_t Frame::getState() {
 	return state;
 }

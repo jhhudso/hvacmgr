@@ -18,6 +18,7 @@ public:
 	u_int8_t getState();
 	u_int8_t getFunc(void);
 	void empty();
+	u_int8_t getSrc();
 	std::vector<u_int8_t> getData();
 	const static size_t maxframelen = 2 + 2 + 1 + 2 + 1 + 255 + 2;
 	const size_t getErrors();
