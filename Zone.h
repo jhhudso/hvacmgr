@@ -12,7 +12,7 @@ class Zone {
 
 public:
 	Zone(byte number) :
-			zoneNumber(number) {
+			zoneNumber(number), modified(false), coolSetpoint(-1), humidity(-1) {
 	}
 
 	void setCoolSetpoint(byte value) {
@@ -75,12 +75,12 @@ public:
 	}
 
 private:
-	byte zoneNumber = -1;
-	bool modified = false;
+	byte zoneNumber;
+	bool modified;
 
-	byte coolSetpoint = -1;
+	byte coolSetpoint;
 	byte heatSetpoint = -1;
 	float temperature = FLOAT_MIN_VALUE;
-	byte humidity = -1;
+	byte humidity;
 	byte damperPosition = -1;
 };
