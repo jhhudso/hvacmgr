@@ -185,6 +185,10 @@ u_int8_t Frame::getSrc() {
 	return src;
 }
 
+u_int8_t Frame::getDst() {
+	return dst;
+}
+
 u_int8_t Frame::getState() {
 	return state;
 }
