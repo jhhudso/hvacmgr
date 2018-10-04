@@ -54,8 +54,8 @@ HVAC::HVAC(string device, u_int32_t baud_rate, bool pty, u_int8_t numberZones) :
 		sp.set_option(boost::asio::serial_port::character_size(boost::asio::serial_port::character_size(8)));
 	}
 
-	for (size_t i = 0; i < NUMBER_ZONES; i++) {
-		zones[i] = new Zone(i + 1);
+	for (size_t i = 1; i <= NUMBER_ZONES; i++) {
+		zones[i] = new Zone(i);
 	}
 	memset(&time, 0, sizeof(time));
 }
@@ -137,7 +137,7 @@ void HVAC::clearStatusModified() {
 }
 
 bool HVAC::isZoneModified() {
-	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
+	for (u_int8_t i = 1; i <= NUMBER_ZONES; i++) {
 		if (zones[i]->isModified()) {
 			return true;
 		}
@@ -146,7 +146,7 @@ bool HVAC::isZoneModified() {
 }
 
 void HVAC::clearZoneModified() {
-	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
+	for (u_int8_t i = 1; i <= NUMBER_ZONES; i++) {
 		zones[i]->setModified(false);
 	}
 }
@@ -216,14 +216,17 @@ bool HVAC::update(Frame &f) {
 	u_int8_t table = 0, row = 0;
 	const u_int8_t dataLength = data.size();
 
-	if (dataLength >= 3) {
+	if (dataLength == 1) {
+		return true;
+	} else if (dataLength >= 3) {
 		table = data.at(1);
 		row = data.at(2);
 	}
 
 	const u_int8_t function = f.getFunc();
 
-	if (function == RESPONSE_FUNCTION) {
+	switch (function) {
+	case RESPONSE_FUNCTION:
 		switch (table) {
 		case 1:
 			switch (row) {
@@ -270,6 +273,18 @@ bool HVAC::update(Frame &f) {
 			break;
 		case 9:
 			switch (row) {
+			case 1:
+			case 2:
+				if (data.size() != 11) {
+					cerr << "error: RES" << hex << (unsigned) table << "," << hex << (unsigned) row << " data.size() != 11" << endl;
+				} else {
+					for (size_t i = 3; i < data.size(); ++i) {
+						if (data.at(i) != 0xFF) {
+							cerr << "error: RES" << hex << (unsigned) table << "," << hex << (unsigned) row << " data.at(" << i << ") not 0xFF" << endl;
+						}
+					}
+				}
+				break;
 			case 3:
 				if (dataLength == 10) {
 					updateOutsideTemp(data);
@@ -290,13 +305,34 @@ bool HVAC::update(Frame &f) {
 			}
 			break;
 		default:
+			cerr << "error: RES unrecognized table " << hex << (unsigned) table << endl;
 			break;
 		}
-	} else if (function == WRITE_FUNCTION) {
+		break;
+	case WRITE_FUNCTION:
 		switch (table) {
 		case 2:
-			if (row == 1 && dataLength == 13) {
-				updateOutsideHumidityTemp(data);
+			switch (row) {
+			case 1:
+				if (dataLength == 13) {
+					updateOutsideHumidityTemp(data);
+				} else {
+					cerr << "error: WR" << hex << (unsigned) table << "," << hex << (unsigned) row << " datalen != 13" << endl;
+				}
+				break;
+			case 2:
+				if (verbose) {
+					cout << "src=" << hex << (unsigned)f.getSrc() << " dst=" << (unsigned)f.getDst() << endl;
+					cout << "hold:      " << dec << (unsigned)data.at(3) << endl;
+					cout << "out:       " << dec << (unsigned)data.at(5) << endl;
+					cout << "Heat goal: " << dec << (unsigned)data.at(7) << "F" << endl;
+					cout << "Cool goal: " << dec << (unsigned)data.at(8) << "F" << endl;
+					cout << "Save:      " << dec << (unsigned)data.at(9) << endl;
+				}
+				break;
+			default:
+				cerr << "error: WR unrecognized table " << hex << (unsigned) table << " row " << hex << (unsigned) row << endl;
+				break;
 			}
 			break;
 		case 9:
@@ -304,11 +340,26 @@ bool HVAC::update(Frame &f) {
 				updateDamperPositions(data);
 			} else if (row == 5 && dataLength == 4) {
 				updateControllerState(data);
+			} else {
+				cerr << "error: WR unrecognized table " << hex << (unsigned) table << " row " << hex << (unsigned) row << endl;
 			}
 			break;
 		default:
+			cerr << "error: WR unrecognized table " << hex << (unsigned) table << endl;
 			break;
 		}
+
+		break;
+	case READ_FUNCTION:
+		if (verbose) {
+			cout << "src=" << dec << (unsigned) f.getSrc() << " requesting table " << (unsigned) table << " row " << (unsigned) row << " from device id "
+					<< (unsigned) f.getDst() << endl;
+		}
+		break;
+
+	default:
+		cerr << "error: function " << hex << (unsigned) function << " not recognized." << endl;
+		break;
 	}
 	return true;
 }
@@ -317,7 +368,7 @@ bool HVAC::update(Frame &f) {
 //   FRAME: 9.0  1.0  11  0.0.12  0.9.4.15.15.0.0.0.0.0.0.                 136.181
 //
 void HVAC::updateDamperPositions(RingBuffer& ringBuffer) {
-	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
+	for (u_int8_t i = 1; i <= NUMBER_ZONES; i++) {
 		zones[i]->setDamperPosition(ringBuffer.at(3 + i));
 	}
 }
@@ -326,8 +377,8 @@ void HVAC::updateDamperPositions(RingBuffer& ringBuffer) {
 //  FRAME: 8.0  1.0  16  0.0.6   0.1.6.0.0.4.64.60.0.0.0.0.0.0.17.50.      74.114
 //
 void HVAC::updateZone1Info(RingBuffer& ringBuffer) {
-	zones[0]->setTemperature(getTemperatureF(ringBuffer.at(5), ringBuffer.at(6)));
-	zones[0]->setHumidity(ringBuffer.at(7));
+	zones[1]->setTemperature(getTemperatureF(ringBuffer.at(5), ringBuffer.at(6)));
+	zones[1]->setHumidity(ringBuffer.at(7));
 }
 
 //
@@ -335,9 +386,9 @@ void HVAC::updateZone1Info(RingBuffer& ringBuffer) {
 //                                        [     cooling          ] [        heating       ]
 //
 void HVAC::updateZoneSetpoints(RingBuffer& ringBuffer) {
-	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
-		zones[i]->setCoolSetpoint(ringBuffer.at(3 + i));
-		zones[i]->setHeatSetpoint(ringBuffer.at(11 + i));
+	for (u_int8_t i = 1; i <= NUMBER_ZONES; i++) {
+		zones[i]->setCoolSetpoint(ringBuffer.at(2 + i));
+		zones[i]->setHeatSetpoint(ringBuffer.at(10 + i));
 	}
 }
 
@@ -375,7 +426,7 @@ void HVAC::updateControllerState(RingBuffer& ringBuffer) {
 //
 void HVAC::updateOutsideHumidityTemp(RingBuffer& ringBuffer) {
 	setOutsideTemperature2(getTemperatureF(ringBuffer.at(5), ringBuffer.at(6)));
-	zones[0]->setHumidity(ringBuffer.at(4));
+	zones[1]->setHumidity(ringBuffer.at(4));
 }
 
 //
@@ -384,17 +435,17 @@ void HVAC::updateOutsideHumidityTemp(RingBuffer& ringBuffer) {
 //
 void HVAC::updateZoneInfo(u_int8_t zoneIndex, RingBuffer& ringBuffer) {
 	if (verbose) {
-		cerr << "updateZoneInfo(" << dec << (unsigned)zoneIndex << ")" << endl;
+		cerr << "updateZoneInfo(" << dec << (unsigned) zoneIndex << ")" << endl;
 	}
 
-	if (zoneIndex == 0 || zoneIndex >= NUMBER_ZONES) {
-		cerr << "error in updateZoneInfo(), zoneIndex(" << dec << (unsigned)zoneIndex << ") == 0 or >= " << dec << (unsigned)NUMBER_ZONES << endl;
+	if (zoneIndex == 0 || zoneIndex > NUMBER_ZONES) {
+		cerr << "error in updateZoneInfo(), zoneIndex(" << dec << (unsigned) zoneIndex << ") == 0 or >= " << dec << (unsigned) NUMBER_ZONES << endl;
 		return;
 	}
 
-	zones[zoneIndex-1]->setTemperature(getTemperatureF(ringBuffer.at(7), ringBuffer.at(8)));
-	zones[zoneIndex-1]->setHeatSetpoint(ringBuffer.at(10));
-	zones[zoneIndex-1]->setCoolSetpoint(ringBuffer.at(11));
+	zones[zoneIndex]->setTemperature(getTemperatureF(ringBuffer.at(7), ringBuffer.at(8)));
+	zones[zoneIndex]->setHeatSetpoint(ringBuffer.at(10));
+	zones[zoneIndex]->setCoolSetpoint(ringBuffer.at(11));
 }
 
 //
@@ -402,7 +453,7 @@ void HVAC::updateZoneInfo(u_int8_t zoneIndex, RingBuffer& ringBuffer) {
 //
 string HVAC::toZoneJson() {
 	boost::property_tree::ptree root;
-	for (u_int8_t i = 0; i < NUMBER_ZONES; i++) {
+	for (u_int8_t i = 1; i <= NUMBER_ZONES; i++) {
 		boost::property_tree::ptree child;
 
 		child.put("cool", zones[i]->getCoolSetpoint());
@@ -410,7 +461,7 @@ string HVAC::toZoneJson() {
 		child.put("temp", zones[i]->getTemperature());
 		child.put("hum", zones[i]->getHumidity());
 		child.put("damp", zones[i]->getDamperPosition());
-		root.add_child("z" + to_string(i + 1), child);
+		root.add_child("z" + to_string(i), child);
 	}
 
 	ostringstream output;

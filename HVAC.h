@@ -56,7 +56,7 @@ public:
 
   private:
 
-    Zone* zones[8];
+    Zone* zones[9];
     u_int8_t NUMBER_ZONES;
     bool statusModified;
 
