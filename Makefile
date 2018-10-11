@@ -1,6 +1,6 @@
 PROJECT_ROOT = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-OBJS = hvacmgr.o Frame.o HVAC.o
+OBJS = hvacmgr.o Frame.o HVAC.o MQTT.o
 
 ifeq ($(BUILD_MODE),run)
 	CPPFLAGS += -O2 -std=c++1z -DBOOST_LOG_DYN_LINK 
@@ -14,7 +14,7 @@ else
 	CXX=g++-8
 endif
 
-LDFLAGS=-lboost_system -lboost_log -lpthread -lboost_thread  -lboost_log_setup
+LDFLAGS=-lboost_system -lboost_log -lpthread -lboost_thread  -lboost_log_setup -lmosquittopp
 
 all:	hvacmgr
 
