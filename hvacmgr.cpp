@@ -39,6 +39,8 @@ int main(int argc, char **argv) {
 	bool pty = false;
 	u_int32_t baud_rate = 9600;
 	string device = "/dev/ttyUSB0";
+	string mqtthost;
+	int mqttport = 1883;
 
 	// Construct a signal set registered for process termination.
 	//boost::asio::signal_set signals(boost::asio::io_service, SIGINT, SIGTERM);
@@ -46,11 +48,8 @@ int main(int argc, char **argv) {
 	// Start an asynchronous wait for one of the signals to occur.
 	//signals.async_wait(handler);
 
-	while ((opt = getopt(argc, argv, "pb:f:v")) != -1) {
+	while ((opt = getopt(argc, argv, "b:f:vh:p:")) != -1) {
 		switch (opt) {
-		case 'p':
-			pty = true;
-			break;
 		case 'b':
 			pty = false;
 			baud_rate = atoi(optarg);
@@ -61,10 +60,15 @@ int main(int argc, char **argv) {
 		case 'v':
 			verbose = true;
 			break;
+		case 'h':
+			mqtthost = optarg;
+			break;
+		case 'p':
+			mqttport = atoi(optarg);
+			break;
 		default: /* '?' */
-			cerr << "Usage: " << argv[0] << "[-b baud rate] [-p] [-f file]"
+			cerr << "Usage: " << argv[0] << "[-b baud rate] [-f tty/file] [-h MQTT host] [-p MQTT port]"
 					<< endl;
-			cerr << "-p file is a pty" << endl;
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -86,7 +90,7 @@ int main(int argc, char **argv) {
 	BOOST_LOG_SEV(lg, error)<< "An error severity message";
 	BOOST_LOG_SEV(lg, fatal)<< "A fatal severity message";
 
-	HVAC hvac(device, baud_rate, pty, 4);
+	HVAC hvac(device, baud_rate, pty, 4, mqtthost, mqttport);
 	hvac.listen();
 
 	return 0;
