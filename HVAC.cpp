@@ -6,6 +6,7 @@
 #include <ctime>
 #include <boost/log/trivial.hpp>
 #include "HVAC.h"
+#include "MQTT.h"
 
 using namespace std;
 
@@ -38,8 +39,8 @@ const char* dayStr(uint8_t day) {
 	}
 }
 
-HVAC::HVAC(string device, u_int32_t baud_rate, bool pty, u_int8_t numberZones) :
-		NUMBER_ZONES(numberZones), statusModified(false), ios(), sp(ios), f(), device(), wait_for_beginning(true) {
+HVAC::HVAC(string device, u_int32_t baud_rate, bool pty, u_int8_t numberZones, string mqtt_broker, int mqtt_port) :
+		NUMBER_ZONES(numberZones), statusModified(false), ios(), sp(ios), f(), device(), wait_for_beginning(true), mqtt_broker(mqtt_broker), mqtt_port(mqtt_port) {
 	try {
 		sp.open(device);
 	} catch (...) {
@@ -61,6 +62,9 @@ HVAC::HVAC(string device, u_int32_t baud_rate, bool pty, u_int8_t numberZones) :
 }
 
 void HVAC::listen(void) {
+	MQTT *mqtt_handle;
+	mqtt_handle = new MQTT("HVACmgr", mqtt_broker.c_str(), mqtt_port);
+
 	while (true) {
 		timeval diff, before, after;
 		memset(&tmp, 0, 64);
@@ -88,9 +92,11 @@ void HVAC::listen(void) {
 					if (verbose) {
 						cout << "hvac_mqtt_feed.publish: " << output.c_str() << endl;
 					}
-					//if (!hvac_mqtt_feed.publish(output.c_str())) {     // Publish to MQTT server (openhab)
-					//  cerr << "zone_mqtt_feed.publish Failed" << endl;
-					//}
+					int rc = mqtt_handle->publish(NULL, "hvac/zone", output.size()+1, output.c_str());
+					if (rc != MOSQ_ERR_SUCCESS) {
+						cout << "MQTT::publish rc=" << rc << endl;
+					}
+
 				}
 
 				if (isStatusModified()) {
@@ -106,13 +112,16 @@ void HVAC::listen(void) {
 				}
 				f.empty();
 			}
-			{
-				if (f.getErrors() > 2) {
-					wait_for_beginning = true;
-					cerr << "3 errors received, waiting for next pause in transmission." << endl;
-				}
+			if (f.getErrors() > 2) {
+				wait_for_beginning = true;
+				cerr << "3 errors received, waiting for next pause in transmission." << endl;
 			}
 		}
+		int res = mqtt_handle->loop();						// Keep MQTT connection
+			if (res) {
+				cerr << "reconnecting to MQTT broker." << endl;
+				mqtt_handle->reconnect();
+			}
 	}
 }
 
@@ -322,12 +331,12 @@ bool HVAC::update(Frame &f) {
 				break;
 			case 2:
 				if (verbose) {
-					cout << "src=" << hex << (unsigned)f.getSrc() << " dst=" << (unsigned)f.getDst() << endl;
-					cout << "hold:      " << dec << (unsigned)data.at(3) << endl;
-					cout << "out:       " << dec << (unsigned)data.at(5) << endl;
-					cout << "Heat goal: " << dec << (unsigned)data.at(7) << "F" << endl;
-					cout << "Cool goal: " << dec << (unsigned)data.at(8) << "F" << endl;
-					cout << "Save:      " << dec << (unsigned)data.at(9) << endl;
+					cout << "src=" << hex << (unsigned) f.getSrc() << " dst=" << (unsigned) f.getDst() << endl;
+					cout << "hold:      " << dec << (unsigned) data.at(3) << endl;
+					cout << "out:       " << dec << (unsigned) data.at(5) << endl;
+					cout << "Heat goal: " << dec << (unsigned) data.at(7) << "F" << endl;
+					cout << "Cool goal: " << dec << (unsigned) data.at(8) << "F" << endl;
+					cout << "Save:      " << dec << (unsigned) data.at(9) << endl;
 				}
 				break;
 			default:

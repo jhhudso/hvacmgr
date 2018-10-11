@@ -28,7 +28,7 @@ typedef struct  {
 
 class HVAC {
 public:
-	HVAC(std::string device, u_int32_t baud_rate, bool pty, u_int8_t zones);
+	HVAC(std::string device, u_int32_t baud_rate, bool pty, u_int8_t zones, std::string mqtthost, int mqttport);
 
 	void listen(void);
 	virtual ~HVAC();
@@ -105,6 +105,8 @@ public:
 	std::string device;
 	u_int8_t tmp[64];
 	bool wait_for_beginning;
+	std::string mqtt_broker;
+	int mqtt_port;
 };
 
 #endif /* HVAC_H_ */
